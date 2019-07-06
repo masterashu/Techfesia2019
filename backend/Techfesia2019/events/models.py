@@ -14,7 +14,11 @@ class Category(models.Model):
 
 
 class Tags(models.Model):
-    pass
+    name = models.CharField(max_length=50,unique=True)
+    description = models.TextField(default='')
+
+    def __str__(self):
+        return self.name
 
 
 class Event(models.Model):
