@@ -10,7 +10,11 @@ class Team(models.Model):
 
 
 class Category(models.Model):
-    pass
+    name = models.CharField(max_length=50, unique=True)
+    description = models.TextField(default='')
+
+    def __str__(self):
+        return self.name
 
 
 class Tags(models.Model):

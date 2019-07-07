@@ -4,9 +4,9 @@ from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Tags
+from .models import Tags, Category
 from .permissions import IsStaffUser
-from .serializers import TagsSerializer
+from .serializers import TagsSerializer, CategorySerializer
 
 
 class TagsListCreateView(APIView):
@@ -49,4 +49,47 @@ class TagsEditDeleteView(APIView):
             tag.delete()
         except Tags.DoesNotExist:
             return Response({'error': 'This tag does not exist.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CategoryListCreateView(APIView):
+    permission_classes = (IsStaffUser,)
+
+    def get(self, request, format=None):
+        category = Category.objects.all()
+        serializer = CategorySerializer(category, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request, format=None):
+        data = JSONParser().parse(request)
+        try:
+            category = Category.objects.create(name=data['name'], description=data['description'])
+        except IntegrityError:
+            return Response({'error': 'This category already exist.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        data = CategorySerializer(category).data
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class CategoryEditDeleteView(APIView):
+    permission_classes = (IsStaffUser,)
+
+    def put(self, request, name, format=None):
+        try:
+            category = Category.objects.get(name=name)
+        except Category.DoesNotExist:
+            return Response({'error': 'Category does not exist.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        category.description = JSONParser().parse(request)['description']
+        category.save()
+        return Response(CategorySerializer(category).data, status=status.HTTP_202_ACCEPTED)
+
+    def delete(self, request, name, format=None):
+        try:
+            category = Category.objects.get(name=name)
+            if category.events.count() > 0:
+                return Response({'error': 'Cant delete a category that is in use.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            category.delete()
+        except Category.DoesNotExist:
+            return Response({'error': 'This category does not exist.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         return Response(status=status.HTTP_204_NO_CONTENT)
