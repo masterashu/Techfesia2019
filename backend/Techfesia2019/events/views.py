@@ -41,4 +41,12 @@ class TagsEditDeleteView(APIView):
         tag.save()
         return Response(TagsSerializer(tag).data, status=status.HTTP_202_ACCEPTED)
 
-
+    def delete(self, request, name, format=None):
+        try:
+            tag = Tags.objects.get(name=name)
+            if tag.events.count() > 0:
+                return Response({'error': 'Cant delete a tag that is in use.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            tag.delete()
+        except Tags.DoesNotExist:
+            return Response({'error': 'This tag does not exist.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        return Response(status=status.HTTP_204_NO_CONTENT)
