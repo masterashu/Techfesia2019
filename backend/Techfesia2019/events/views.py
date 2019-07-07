@@ -9,7 +9,7 @@ from .permissions import IsStaffUser
 from .serializers import TagsSerializer
 
 
-class TagsDetailsView(APIView):
+class TagsListCreateView(APIView):
     permission_classes = (IsStaffUser,)
 
     def get(self, request, format=None):
@@ -26,4 +26,19 @@ class TagsDetailsView(APIView):
 
         data = TagsSerializer(tag).data
         return Response(data, status=status.HTTP_201_CREATED)
+
+
+class TagsEditDeleteView(APIView):
+    permission_classes = (IsStaffUser,)
+
+    def put(self, request, name, format=None):
+        try:
+            tag = Tags.objects.get(name=name)
+        except Tags.DoesNotExist:
+            return Response({'error': 'Tag does not exist.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        tag.description = JSONParser().parse(request)['description']
+        tag.save()
+        return Response(TagsSerializer(tag).data, status=status.HTTP_202_ACCEPTED)
+
 
