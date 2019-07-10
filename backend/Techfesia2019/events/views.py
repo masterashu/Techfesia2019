@@ -4,10 +4,98 @@ from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Tags, Category, Event, SoloEvent, TeamEvent
+from .models import Tags, Category, SoloEvent, TeamEvent
 from .permissions import IsStaffUser
-from .serializers import TagsSerializer, CategorySerializer, EventSerializer, SoloEventSerializer, TeamEventSerializer
+from .serializers import TagsSerializer, CategorySerializer, SoloEventSerializer, TeamEventSerializer
 import datetime
+
+
+def validation_errors(data):
+
+    # 1. Validating dates
+    try:
+        datetime.datetime.strptime(data['start_date'], '%Y-%m-%d')
+    except ValueError:
+        return [1, Response({'error': 'Incorrect start_date format, should be "YYYY-MM-DD" or Invalid start_date'},
+                            status=status.HTTP_400_BAD_REQUEST)]
+    try:
+        datetime.datetime.strptime(data['end_date'], '%Y-%m-%d')
+    except ValueError:
+        return [1, Response({'error': 'Incorrect end_date format, should be "YYYY-MM-DD" or Invalid end_date'},
+                            status=status.HTTP_400_BAD_REQUEST)]
+
+    # 2. Validating time
+    try:
+        datetime.datetime.strptime(data['start_time'], '%H:%M')
+    except ValueError:
+        return [1, Response({'error': 'Incorrect start_time format, should be "HH:MM" or Invalid start_time'},
+                            status=status.HTTP_400_BAD_REQUEST)]
+    try:
+        datetime.datetime.strptime(data['end_time'], '%H:%M')
+    except ValueError:
+        return [1, Response({'error': 'Incorrect end_time format, should be "HH:MM" or Invalid end_time'},
+                            status=status.HTTP_400_BAD_REQUEST)]
+
+    # 3. Checking date and time
+    if data['end_date'] < data['start_date']:
+        return [1, Response({'error': 'end_date can not be before than start_date of event'},
+                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)]
+    elif data['end_date'] == data['start_date']:
+        if data['end_time'] <= data['start_time']:
+            return [1, Response({'error': 'end_time can not be before than start_time of event'},
+                                status=status.HTTP_422_UNPROCESSABLE_ENTITY)]
+    # 4. Checking max_participants and reserved_slots
+    if data['reserved_slots'] > data['max_participants']:
+        return [1, Response({'error': 'reserved_slots cannot be greater than max_participants'},
+                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)]
+
+    # 5. Validating list of categories and tags
+    category_list = list()
+    has_tags = 0
+    tags_list = list()
+    if 'category' in data:
+        invalid_category_list = list()
+        for name in data['category']:
+            try:
+                category_list.append(Category.objects.get(name=name))
+            except Category.DoesNotExist:
+                invalid_category_list.append(name)
+        if len(invalid_category_list) > 0:
+            return [1, Response({'error': f'The following categories {invalid_category_list} do not exist.'},
+                                status=status.HTTP_422_UNPROCESSABLE_ENTITY)]
+        if len(category_list) == 0:
+            try:
+                category_list.append(Category.objects.get(name='Others'))
+            except Category.DoesNotExist:
+                c = Category(name='Others',
+                             description='It is a default category for events')
+                c.save()
+                category_list.append(Category.objects.get(name='Others'))
+    else:
+        try:
+            category_list.append(Category.objects.get(name='Others'))
+        except Category.DoesNotExist:
+            c = Category(name='Others',
+                         description='It is a default category for events')
+            c.save()
+            category_list.append(Category.objects.get(name='Others'))
+
+    if 'tags' in data:
+        has_tags = 1
+        invalid_tags_list = list()
+        for name in data['tags']:
+            try:
+                tags_list.append(Tags.objects.get(name=name))
+            except Tags.DoesNotExist:
+                invalid_tags_list.append(name)
+        if len(invalid_tags_list) > 0:
+            return [1, Response({'error': f'The following tags {invalid_tags_list} do not exist.'},
+                                status=status.HTTP_422_UNPROCESSABLE_ENTITY)]
+
+    if has_tags == 0:
+        return [2, category_list]
+    if has_tags == 1:
+        return [3, category_list, tags_list]
 
 
 class TagsListCreateView(APIView):
@@ -86,6 +174,8 @@ class CategoryEditDeleteView(APIView):
         return Response(CategorySerializer(category).data, status=status.HTTP_202_ACCEPTED)
 
     def delete(self, request, name, format=None):
+        if name == 'Others':
+            return Response({'error': 'It is a default category for events.'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         try:
             category = Category.objects.get(name=name)
             if category.events.count() > 0:
@@ -97,7 +187,7 @@ class CategoryEditDeleteView(APIView):
 
 
 class EventListCreateView(APIView):
-    permission_classes = (IsAuthenticated, )
+    permission_classes = (IsAuthenticated, IsStaffUser, )
 
     def get(self, request, format=None):
         solo_events = SoloEvent.objects.all()
@@ -109,109 +199,235 @@ class EventListCreateView(APIView):
 
     def post(self, request, format=None):
         data = JSONParser().parse(request)
+        error_list = validation_errors(data)
 
-        # 1. Validating dates
-        try:
-            datetime.datetime.strptime(data['start_date'], '%Y-%m-%d')
-        except ValueError:
-            return Response({'error': 'Incorrect start_date format, should be "YYYY-MM-DD" or Invalid start_date'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        try:
-            datetime.datetime.strptime(data['end_date'], '%Y-%m-%d')
-        except ValueError:
-            return Response({'error': 'Incorrect end_date format, should be "YYYY-MM-DD" or Invalid end_date'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        # 2. Validating time
-        try:
-            datetime.datetime.strptime(data['start_time'], '%H:%M')
-        except ValueError:
-            return Response({'error': 'Incorrect start_time format, should be "HH:MM" or Invalid start_date'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        try:
-            datetime.datetime.strptime(data['end_time'], '%H:%M')
-        except ValueError:
-            return Response({'error': 'Incorrect end_time format, should be "HH:MM" or Invalid end_time'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        # 3. Checking date and time
-        if data['end_date'] < data['start_date']:
-            return Response({'error': 'end_date can not be before than start_date of event'},
-                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-        elif data['end_date'] == data['start_date']:
-            if data['end_time'] <= data['start_time']:
-                return Response({'error': 'end_time can not be before than start_time of event'},
-                                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-
-        # 4. Checking max_participants and reserved_slots
-        if data['reserved_slots'] > data['max_participants']:
-            return Response({'error': 'reserved_slots cannot be greater than max_participants'},
-                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-
-        # 5. Validating list of categories and tags
-        category_list = list()
-        invalid_category_list = list()
-        for name in data['category']:
-            try:
-                category_list.append(Category.objects.get(name=name))
-            except Category.DoesNotExist:
-                invalid_category_list.append(name)
-
+        has_tags = 0
         tags_list = list()
-        invalid_tags_list = list()
-        for name in data['tags']:
+        if error_list[0] == 1:
+            return error_list[1]
+        elif error_list[0] == 2:
+            category_list = error_list[1]
+        else:
+            category_list = error_list[1]
+            tags_list = error_list[2]
+            has_tags = 1
+
+        no_solo_team_event = 0
+        # Checking if public_id is provided, then unique.
+        if 'public_id' in data:
             try:
-                tags_list.append(Tags.objects.get(name=name))
-            except Tags.DoesNotExist:
-                invalid_tags_list.append(name)
+                SoloEvent.objects.get(public_id=data['public_id'])
+                return Response({'error': 'Solo event with such public_id already exists'},
+                                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            except SoloEvent.DoesNotExist:
+                try:
+                    TeamEvent.objects.get(public_id=data['public_id'])
+                    return Response({'error': 'Team event with such public_id already exists'},
+                                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                except TeamEvent.DoesNotExist:
+                    no_solo_team_event = 1
 
-        if len(invalid_category_list) > 0 and len(invalid_tags_list) == 0:
-            return Response({'error': f'The following categories {invalid_category_list} do not exist.'},
-                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-
-        elif len(invalid_category_list) == 0 and len(invalid_tags_list) > 0:
-            return Response({'error': f'The following tags {invalid_tags_list} do not exist.'},
-                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-
-        elif len(invalid_category_list) > 0 and len(invalid_tags_list) > 0:
-            return Response({'error': f'The following categories {invalid_category_list}'
-                            f' and tags {invalid_tags_list} do not exist.'},
-                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-
-        # 6. Creating event on behalf of team_event parameter
+        # checking if it is a team_event
         if data['team_event']:
             try:
-                team_event = TeamEvent(event_picture=data['event_picture'], event_logo=data['event_logo'],
-                                       title=data['name'], description=data['description'],
-                                       start_time=data['start_time'], start_date=data['start_date'],
-                                       end_date=data['end_date'], end_time=data['end_time'], venue=data['venue'],
-                                       team_event=data['team_event'],  min_team_size=data['min_team_size'],
-                                       max_team_size=data['max_team_size'],
-                                       max_participants=data['max_participants'], reserved_slots=data['reserved_slots'])
-                team_event.save()
-            except IntegrityError:
-                return Response({'error': 'Team event with such name already exists'},
+                SoloEvent.objects.get(title=data['title'])
+                return Response({'error': 'Solo event with such title already exists.'},
                                 status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-            team_event.category.set(category_list)
-            team_event.tags.set(tags_list)
-            team_event.save()
-            data = TeamEventSerializer(team_event).data
-            return Response(data, status=status.HTTP_201_CREATED)
+            except SoloEvent.DoesNotExist:
+                if 'min_team_size' in data and 'max_team_size' in data:
+                    if data['max_team_size'] < data['min_team_size']:
+                        return Response({'error': 'max_team_size can not be less than min_team_size'},
+                                        status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                    try:
+                        team_event = TeamEvent(event_picture=data['event_picture'], event_logo=data['event_logo'],
+                                               title=data['title'], description=data['description'],
+                                               start_time=data['start_time'], start_date=data['start_date'],
+                                               end_date=data['end_date'], end_time=data['end_time'], venue=data['venue'],
+                                               team_event=data['team_event'], min_team_size=data['min_team_size'],
+                                               max_team_size=data['max_team_size'],
+                                               max_participants=data['max_participants'],
+                                               reserved_slots=data['reserved_slots'])
+                        if no_solo_team_event == 1:
+                            team_event.public_id = data['public_id']
+                        team_event.save()
+                    except IntegrityError:
+                        return Response({'error': 'Team event with such title already exists'},
+                                        status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+                    team_event.category.set(category_list)
+                    if has_tags == 1:
+                        team_event.tags.set(tags_list)
+                    team_event.save()
+                    data = TeamEventSerializer(team_event).data
+                    return Response(data, status=status.HTTP_201_CREATED)
+                return Response({'error': 'min_team_size and max_team_size parameters are not provided'},
+                                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
         else:
             try:
-                solo_event = SoloEvent(event_picture=data['event_picture'], event_logo=data['event_logo'],
-                                       title=data['name'], description=data['description'],
-                                       start_time=data['start_time'], start_date=data['start_date'],
-                                       end_date=data['end_date'], end_time=data['end_time'], venue=data['venue'],
-                                       team_event=data['team_event'],
-                                       max_participants=data['max_participants'],
-                                       reserved_slots=data['reserved_slots'])
-                solo_event.save()
-            except IntegrityError:
-                return Response({'error': 'Solo event with such name already exists'},
+                TeamEvent.objects.get(title=data['title'])
+                return Response({'error': 'Team Event with such title already exists.'},
                                 status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-            solo_event.category.set(category_list)
-            solo_event.tags.set(tags_list)
-            solo_event.save()
-            data = SoloEventSerializer(solo_event).data
-            return Response(data, status=status.HTTP_201_CREATED)
+            except TeamEvent.DoesNotExist:
+                try:
+                    solo_event = SoloEvent(event_picture=data['event_picture'], event_logo=data['event_logo'],
+                                           title=data['title'], description=data['description'],
+                                           start_time=data['start_time'], start_date=data['start_date'],
+                                           end_date=data['end_date'], end_time=data['end_time'], venue=data['venue'],
+                                           team_event=data['team_event'],
+                                           max_participants=data['max_participants'],
+                                           reserved_slots=data['reserved_slots'])
+                    if no_solo_team_event == 1:
+                        solo_event.public_id = data['public_id']
+                    solo_event.save()
+                except IntegrityError:
+                    return Response({'error': 'Solo event with such title already exists'},
+                                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                solo_event.category.set(category_list)
+                if has_tags == 1:
+                    solo_event.tags.set(tags_list)
+                solo_event.save()
+                data = SoloEventSerializer(solo_event).data
+                return Response(data, status=status.HTTP_201_CREATED)
+
+
+class EventDetailEditDeleteView(APIView):
+    permission_classes = (IsStaffUser, )
+
+    def get(self, request, public_id, format=None):
+        try:
+            solo_event = SoloEvent.objects.get(public_id=public_id)
+            solo_event_serializer = SoloEventSerializer(solo_event)
+        except SoloEvent.DoesNotExist:
+            try:
+                team_event = TeamEvent.objects.get(public_id=public_id)
+                team_event_serializer = TeamEventSerializer(team_event)
+            except TeamEvent.DoesNotExist:
+                return Response({'error': 'This event does not exist'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            return Response(team_event_serializer.data, status=status.HTTP_200_OK)
+        return Response(solo_event_serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, public_id, format=None):
+        try:
+            solo_event = SoloEvent.objects.get(public_id=public_id)
+            data = JSONParser().parse(request)
+            if 'public_id' in data:
+                if public_id != data['public_id']:
+                    return Response({'error': 'public_id of an event can not be changed'},
+                                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+            error_list = validation_errors(data)
+            has_tags = 0
+            tags_list = list()
+            if error_list[0] == 1:
+                return error_list[1]
+            elif error_list[0] == 2:
+                category_list = error_list[1]
+            else:
+                category_list = error_list[1]
+                tags_list = error_list[2]
+                has_tags = 1
+
+            # Shifting to team event
+            if data['team_event']:
+                if 'min_team_size' in data and 'max_team_size' in data:
+                    if data['max_team_size'] < data['min_team_size']:
+                        return Response({'error': 'max_team_size can not be less than min_team_size'},
+                                        status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+                    try:  # if title is changed
+                        TeamEvent.objects.get(title=data['title'])
+                        return Response({'error': 'Team event with such title already exists.'},
+                                        status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                    except TeamEvent.DoesNotExist:
+                        team_event = TeamEvent(event_picture=data['event_picture'], event_logo=data['event_logo'],
+                                               title=data['title'], description=data['description'],
+                                               start_time=data['start_time'], start_date=data['start_date'],
+                                               end_date=data['end_date'], end_time=data['end_time'],
+                                               venue=data['venue'], team_event=data['team_event'],
+                                               min_team_size=data['min_team_size'], max_team_size=data['max_team_size'],
+                                               max_participants=data['max_participants'], public_id=public_id,
+                                               reserved_slots=data['reserved_slots'])
+                        solo_event.delete()
+                        team_event.save()
+                        team_event.category.set(category_list)
+                        if has_tags == 1:
+                            team_event.tags.set(tags_list)
+                        team_event.save()
+                        team_event_serializer = TeamEventSerializer(team_event)
+                        return Response(team_event_serializer.data, status=status.HTTP_202_ACCEPTED)
+                else:
+                    return Response({'error': 'min_team_size and max_team_size parameters are not provided'},
+                                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            else:
+                solo_event_serializer = SoloEventSerializer(solo_event, data=data)
+                if solo_event_serializer.is_valid():
+                    solo_event_serializer.save()
+                    return Response(solo_event_serializer.data, status=status.HTTP_202_ACCEPTED)
+                return Response(solo_event_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except SoloEvent.DoesNotExist:
+            try:
+                team_event = TeamEvent.objects.get(public_id=public_id)
+                data = JSONParser().parse(request)
+                if 'public_id' in data:
+                    if public_id != data['public_id']:
+                        return Response({'error': 'public_id of an event can not be changed'},
+                                        status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+                error_list = validation_errors(data)
+                has_tags = 0
+                tags_list = list()
+                if error_list[0] == 1:
+                    return error_list[1]
+                elif error_list[0] == 2:
+                    category_list = error_list[1]
+                else:
+                    category_list = error_list[1]
+                    tags_list = error_list[2]
+                    has_tags = 1
+
+                # Shifting to solo event
+                if not data['team_event']:
+                    try:  # if title is changed
+                        SoloEvent.objects.get(title=data['title'])
+                        return Response({'error': 'Solo event with such title already exists.'},
+                                        status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                    except SoloEvent.DoesNotExist:
+                        solo_event = SoloEvent(event_picture=data['event_picture'], event_logo=data['event_logo'],
+                                               title=data['title'], description=data['description'],
+                                               start_time=data['start_time'], start_date=data['start_date'],
+                                               end_date=data['end_date'], end_time=data['end_time'],
+                                               venue=data['venue'], team_event=data['team_event'],
+                                               max_participants=data['max_participants'], public_id=public_id,
+                                               reserved_slots=data['reserved_slots'])
+                        team_event.delete()
+                        solo_event.save()
+                        solo_event.category.set(category_list)
+                        if has_tags == 1:
+                            solo_event.tags.set(tags_list)
+                        solo_event.save()
+                        solo_event_serializer = SoloEventSerializer(solo_event)
+                        return Response(solo_event_serializer.data, status=status.HTTP_202_ACCEPTED)
+                else:
+                    team_event_serializer = TeamEventSerializer(team_event, data=data)
+                    if team_event_serializer.is_valid():
+                        team_event_serializer.save()
+                        return Response(team_event_serializer.data, status=status.HTTP_202_ACCEPTED)
+                    return Response(team_event_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            except TeamEvent.DoesNotExist:
+                return Response({'error': 'This event does not exist'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    def delete(self, request, public_id, format=None):
+        try:
+            solo_event = SoloEvent.objects.get(public_id=public_id)
+            solo_event.delete()
+        except SoloEvent.DoesNotExist:
+            try:
+                team_event = TeamEvent.objects.get(public_id=public_id)
+                team_event.delete()
+            except TeamEvent.DoesNotExist:
+                return Response({'error': 'This event does not exist'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            return Response(status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_200_OK)
+
