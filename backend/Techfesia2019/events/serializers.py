@@ -18,9 +18,6 @@ class EventSerializer(serializers.ModelSerializer):
     category = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
     tags = serializers.SlugRelatedField(many=True, read_only=True, slug_field='name')
 
-    class Meta:
-        model = Event
-
 
 class SoloEventSerializer(serializers.ModelSerializer):
 

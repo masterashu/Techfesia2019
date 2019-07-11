@@ -9,5 +9,4 @@ urlpatterns = [
     path('/category', CategoryListCreateView.as_view(), name='category_list_create'),
     path('/category/<str:name>', CategoryEditDeleteView.as_view(), name='category_edit_delete'),
     path('/<str:public_id>', EventDetailEditDeleteView.as_view(), name='events_delete'),
-
 ]

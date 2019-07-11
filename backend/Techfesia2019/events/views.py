@@ -1,6 +1,6 @@
 from django.db import IntegrityError
 from rest_framework import status
-from rest_framework.parsers import JSONParser
+from rest_framework.parsers import JSONParser, FileUploadParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -191,8 +191,36 @@ class EventListCreateView(APIView):
 
     def get(self, request, format=None):
         solo_events = SoloEvent.objects.all()
-        solo_events_serializer = SoloEventSerializer(solo_events, many=True)
         team_events = TeamEvent.objects.all()
+
+        # implementing filtering
+        if 'category' in request.query_params:
+            try:
+                category = Category.objects.get(name=request.query_params['category'])
+            except Category.DoesNotExist:
+                return Response({'error': 'Invalid filtering against non existing category'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if 'tags' in request.query_params:
+                try:
+                    tag = Tags.objects.get(name=request.query_params['tags'])
+                except Tags.DoesNotExist:
+                    return Response({'error': 'Invalid filtering against non existing tags'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                solo_events = SoloEvent.objects.filter(category=category, tags=tag)
+                team_events = TeamEvent.objects.filter(category=category, tags=tag)
+            else:
+                solo_events = SoloEvent.objects.filter(category=category)
+                team_events = TeamEvent.objects.filter(category=category)
+        elif 'tags' in request.query_params:
+            try:
+                tag = Tags.objects.get(name=request.query_params['tags'])
+            except Tags.DoesNotExist:
+                return Response({'error': 'Invalid filtering against non existing tags'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            solo_events = SoloEvent.objects.filter(tags=tag)
+            team_events = TeamEvent.objects.filter(tags=tag)
+
+        solo_events_serializer = SoloEventSerializer(solo_events, many=True)
         team_events_serializer = TeamEventSerializer(team_events, many=True)
         return Response({'events': solo_events_serializer.data + team_events_serializer.data},
                         status=status.HTTP_200_OK)
@@ -363,6 +391,13 @@ class EventDetailEditDeleteView(APIView):
                 solo_event_serializer = SoloEventSerializer(solo_event, data=data)
                 if solo_event_serializer.is_valid():
                     solo_event_serializer.save()
+                    solo_event.category.set(category_list)
+                    if has_tags == 1:
+                        solo_event.tags.set(tags_list)
+                    else:  # removing previous tags
+                        for tag in solo_event.tags.all():
+                            solo_event.tags.remove(tag)
+                    solo_event.save()
                     return Response(solo_event_serializer.data, status=status.HTTP_202_ACCEPTED)
                 return Response(solo_event_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -413,6 +448,13 @@ class EventDetailEditDeleteView(APIView):
                     team_event_serializer = TeamEventSerializer(team_event, data=data)
                     if team_event_serializer.is_valid():
                         team_event_serializer.save()
+                        team_event.category.set(category_list)
+                        if has_tags == 1:
+                            team_event.tags.set(tags_list)
+                        else:  # removing previous tags
+                            for tag in team_event.tags.set():
+                                team_event.tags.remove(tag)
+                        team_event.save()
                         return Response(team_event_serializer.data, status=status.HTTP_202_ACCEPTED)
                     return Response(team_event_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             except TeamEvent.DoesNotExist:
@@ -430,4 +472,3 @@ class EventDetailEditDeleteView(APIView):
                 return Response({'error': 'This event does not exist'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
             return Response(status=status.HTTP_200_OK)
         return Response(status=status.HTTP_200_OK)
-
