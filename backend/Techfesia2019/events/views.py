@@ -194,31 +194,16 @@ class EventListCreateView(APIView):
         team_events = TeamEvent.objects.all()
 
         # implementing filtering
-        if 'category' in request.query_params:
-            try:
-                category = Category.objects.get(name=request.query_params['category'])
-            except Category.DoesNotExist:
-                return Response({'error': 'Invalid filtering against non existing category'},
-                                status=status.HTTP_400_BAD_REQUEST)
-            if 'tags' in request.query_params:
-                try:
-                    tag = Tags.objects.get(name=request.query_params['tags'])
-                except Tags.DoesNotExist:
-                    return Response({'error': 'Invalid filtering against non existing tags'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-                solo_events = SoloEvent.objects.filter(category=category, tags=tag)
-                team_events = TeamEvent.objects.filter(category=category, tags=tag)
-            else:
-                solo_events = SoloEvent.objects.filter(category=category)
-                team_events = TeamEvent.objects.filter(category=category)
-        elif 'tags' in request.query_params:
-            try:
-                tag = Tags.objects.get(name=request.query_params['tags'])
-            except Tags.DoesNotExist:
-                return Response({'error': 'Invalid filtering against non existing tags'},
-                                status=status.HTTP_400_BAD_REQUEST)
-            solo_events = SoloEvent.objects.filter(tags=tag)
-            team_events = TeamEvent.objects.filter(tags=tag)
+        data = dict(request.query_params.lists())
+        if 'category' in data:
+            for c in data['category']:
+                solo_events = SoloEvent.objects.filter(category__name=c) & solo_events
+                team_events = TeamEvent.objects.filter(category__name=c) & team_events
+
+        if 'tags' in data:
+            for t in data['tags']:
+                solo_events = SoloEvent.objects.filter(tags__name=t) & solo_events
+                team_events = TeamEvent.objects.filter(tags__name=t) & team_events
 
         solo_events_serializer = SoloEventSerializer(solo_events, many=True)
         team_events_serializer = TeamEventSerializer(team_events, many=True)
