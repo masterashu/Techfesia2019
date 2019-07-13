@@ -1,13 +1,18 @@
+import os
 from django.db import IntegrityError
+from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.parsers import JSONParser, FileUploadParser
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Tags, Category, SoloEvent, TeamEvent
+from .models import Tags, Category, Event, SoloEvent, TeamEvent
 from .permissions import IsStaffUser
-from .serializers import TagsSerializer, CategorySerializer, SoloEventSerializer, TeamEventSerializer
+from .serializers import TagsSerializer, CategorySerializer, SoloEventSerializer, TeamEventSerializer,\
+    EventPictureLogoUploadSerializer
+from .path_resolvers import resolve_event_data_folder
 import datetime
+from Techfesia2019.settings import BASE_DIR
 
 
 def validation_errors(data):
@@ -447,13 +452,34 @@ class EventDetailEditDeleteView(APIView):
 
     def delete(self, request, public_id, format=None):
         try:
-            solo_event = SoloEvent.objects.get(public_id=public_id)
-            solo_event.delete()
-        except SoloEvent.DoesNotExist:
-            try:
-                team_event = TeamEvent.objects.get(public_id=public_id)
-                team_event.delete()
-            except TeamEvent.DoesNotExist:
-                return Response({'error': 'This event does not exist'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-            return Response(status=status.HTTP_200_OK)
+            event = Event.objects.get(public_id=public_id)
+            os.system(f'rm -rf {BASE_DIR}/media/events/{event.public_id}/')
+            event.delete()
+        except Event.DoesNotExist:
+            return Response({'error': 'This event does not exist'}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         return Response(status=status.HTTP_200_OK)
+
+
+class EventPictureLogoUploadView(APIView):
+    permission_classes = (IsStaffUser,)
+    parser_classes = (MultiPartParser, FormParser)
+
+    def post(self, request, public_id):
+        event = get_object_or_404(Event, public_id=public_id)
+        modified_data_dict = {
+            'uploaded_picture': request.data.get('picture'),
+            'uploaded_logo': request.data.get('logo'),
+            'event': event.pk
+        }
+        sr = EventPictureLogoUploadSerializer(data=modified_data_dict)
+        if sr.is_valid():
+            img = sr.save()
+
+            event.event_picture = img.uploaded_picture.url
+            event.event_logo = img.uploaded_logo.url
+            event.save()
+            return Response(data={"event_picture": event.event_picture, "event_logo": event.event_logo},
+                            status=status.HTTP_201_CREATED)
+
+        return Response(sr.errors)
+

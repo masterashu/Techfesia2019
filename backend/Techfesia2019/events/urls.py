@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import TagsListCreateView, TagsEditDeleteView, CategoryListCreateView, \
-    CategoryEditDeleteView, EventListCreateView, EventDetailEditDeleteView
+    CategoryEditDeleteView, EventListCreateView, EventDetailEditDeleteView, EventPictureLogoUploadView
 
 urlpatterns = [
     path('', EventListCreateView.as_view(), name='events_list_create'),
@@ -9,4 +9,5 @@ urlpatterns = [
     path('/category', CategoryListCreateView.as_view(), name='category_list_create'),
     path('/category/<str:name>', CategoryEditDeleteView.as_view(), name='category_edit_delete'),
     path('/<str:public_id>', EventDetailEditDeleteView.as_view(), name='events_delete'),
+    path('/<str:public_id>/photo', EventPictureLogoUploadView.as_view(), name='upload event_picture event_logo'),
 ]
