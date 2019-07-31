@@ -27,4 +27,5 @@ urlpatterns = [
     path('users/', include("accounts.urls")),
     path('rest/', include('rest_framework.urls', namespace='rest_framework')),
     path('events', include('events.urls')),
+    path('ticket/', include('tickets.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
