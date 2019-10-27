@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import Tags, Category, Event, SoloEvent, TeamEvent
-from .permissions import IsStaffUser
+from .permissions import IsStaffUser, IsAuthenticatedOrGet, IsStaffUserOrGet
 from .serializers import TagsSerializer, CategorySerializer, SoloEventSerializer, TeamEventSerializer,\
     EventPictureLogoUploadSerializer
 from .path_resolvers import resolve_event_data_folder
@@ -192,7 +192,7 @@ class CategoryEditDeleteView(APIView):
 
 
 class EventListCreateView(APIView):
-    permission_classes = (IsAuthenticated, IsStaffUser, )
+    permission_classes = (IsAuthenticatedOrGet, )
 
     def get(self, request, format=None):
         solo_events = SoloEvent.objects.all()
@@ -310,7 +310,7 @@ class EventListCreateView(APIView):
 
 
 class EventDetailEditDeleteView(APIView):
-    permission_classes = (IsStaffUser, )
+    permission_classes = (IsStaffUserOrGet, )
 
     def get(self, request, public_id, format=None):
         try:
