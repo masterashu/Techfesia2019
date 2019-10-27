@@ -6,11 +6,19 @@ from base.utils import generate_random_string, generate_public_id
 
 
 class Category(models.Model):
-    pass
+    name = models.CharField(max_length=50, unique=True)
+    description = models.TextField(default='')
+
+    def __str__(self):
+        return self.name
 
 
 class Tags(models.Model):
-    pass
+    name = models.CharField(max_length=50, unique=True)
+    description = models.TextField(default='')
+
+    def __str__(self):
+        return self.name
 
 
 class Event(models.Model):
