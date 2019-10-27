@@ -7,6 +7,8 @@ from django.dispatch import receiver
 from events.models import Event, SoloEvent
 from registration.models import User
 
+class Institute(models.Model):
+    name = models.CharField(max_length=200, default='Indian Institute of Information Technology, Sri City')
 
 class Institute(models.Model):
     name = models.CharField(max_length=200, default='Indian Institute of Information Technology, Sri City', unique=True)

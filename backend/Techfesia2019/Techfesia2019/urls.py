@@ -28,6 +28,7 @@ urlpatterns = [
     path('events/<str:public_id>/registrations/', include('event_registrations.event_registration_urls')),
     path('users/', include("accounts.urls")),
     path('teams/', include('event_registrations.team_urls')),
-    path('rest/', include('rest_framework.urls', namespace='rest_framework')),
     path('csv/', include('event_registrations.csv_urls')),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    path('rest/', include('rest_framework.urls', namespace='rest_framework')),
+    path('ticket/', include('tickets.urls')),
+]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
