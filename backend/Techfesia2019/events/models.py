@@ -5,10 +5,6 @@ import datetime
 from base.utils import generate_random_string, generate_public_id
 
 
-class Team(models.Model):
-    pass
-
-
 class Category(models.Model):
     pass
 
